@@ -15,17 +15,19 @@ public enum TemplateError: Error {
 }
 
 public protocol TemplatingSyntax {
-    static func compile(atPath path: String) throws -> Template
-    static func compile(fromData data: [UInt8]) throws -> Template
+    static func compile(_ file: String, atPath path: String) throws -> Template
+    static func compile(fromData data: [UInt8], atPath path: String) throws -> Template
+    
+    static var tags: [Tag.Type] { get }
 }
 
 extension TemplatingSyntax {
-    public static func compile(atPath path: String) throws -> Template {
-        guard let data = FileManager.default.contents(atPath: path) else {
-            throw TemplateError.fileDoesNotExist(atPath: path)
+    public static func compile(_ file: String, atPath path: String) throws -> Template {
+        guard let data = FileManager.default.contents(atPath: path + file) else {
+            throw TemplateError.fileDoesNotExist(atPath: path + file)
         }
         
-        return try Self.compile(fromData: try data.makeBytes())
+        return try Self.compile(fromData: try data.makeBytes(), atPath: path)
     }
 }
 
@@ -142,7 +144,7 @@ public final class Template : CustomValueConvertible {
         }
     }
     
-    public func run(inContext context: Context) throws -> [UInt8] {
+    public func run(inContext context: Context = [:]) throws -> [UInt8] {
         var position = 0
         var output = [UInt8]()
         

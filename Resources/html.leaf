@@ -1,0 +1,3 @@
+#extend("base")
+
+#export("html") { <html>#embed("body")</html> }

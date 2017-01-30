@@ -14,7 +14,7 @@ import BSON
 
 class KittenTemplatingTests: XCTestCase {
     func testLoop() throws {
-        let template = try LeafSyntax.compile(atPath: workDir + "simple.leaf")
+        let template = try LeafSyntax.compile("simple.leaf", atPath: workDir)
         
         let output = try template.run(inContext: [
             "list": [
@@ -39,6 +39,18 @@ class KittenTemplatingTests: XCTestCase {
         XCTAssertFalse(string.contains("kaas5"))
     }
 
+    func testExample() throws {
+        let template = try LeafSyntax.compile("embed.leaf", atPath: workDir)
+        
+        let output = try template.run()
+        
+        guard let string = String(bytes: output, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        print(string)
+    }
 
     static var allTests : [(String, (KittenTemplatingTests) -> () throws -> Void)] {
         return [
