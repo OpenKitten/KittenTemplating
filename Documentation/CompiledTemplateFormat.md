@@ -1,7 +1,7 @@
 template    ::= s_list "\x00"		              Template
 e_list      ::= element s_list | ""               Element list
 
-element     ::= "\x01" (byte)* "\x00"        Raw data (uint32 for the length of the "(byte)*")
+element     ::= "\x01" len (byte)*       Raw data (uint32 for the length of the "(byte)*")
               | "\x02" statement
 
 statement   ::= "\x01" expression true_template_len false_template_len e_list e_list | ""

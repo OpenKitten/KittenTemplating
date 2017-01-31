@@ -35,10 +35,14 @@ struct SpecialCharacters {
     static let comma: UInt8 = 0x2c
     static let codeBracketOpen: UInt8 = 0x7b
     static let codeBracketClose: UInt8 = 0x7d
+    static let argumentsOpen: UInt8 = 0x28
     static let argumentsClose: UInt8 = 0x29
     static let space: UInt8 = 0x20
     static let quotationMark: UInt8 = 0x22
     static let endLine: UInt8 = 0x0a
+    static let pound: UInt8 = 0x23
+    
+    static let whitespace: [UInt8] = [SpecialCharacters.space, SpecialCharacters.endLine]
 }
 
 extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == Int, Self.IndexDistance == Int {
@@ -111,7 +115,7 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
     }
     
     func skipWhitespace(fromPosition position: inout Int) {
-        skip(fromPosition: &position, characters: SpecialCharacters.space, SpecialCharacters.endLine)
+        skip(fromPosition: &position, characters: SpecialCharacters.whitespace)
     }
     
     func scanStringLiteral(atPosition position: inout Int) throws -> [UInt8] {

@@ -31,6 +31,8 @@ class KittenTemplatingTests: XCTestCase {
             return
         }
         
+        print(string)
+        
         XCTAssert(string.contains("kaas0"))
         XCTAssert(string.contains("kaas1"))
         XCTAssert(string.contains("kaas2"))

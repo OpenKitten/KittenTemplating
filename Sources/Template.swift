@@ -152,7 +152,7 @@ public final class Template : CustomValueConvertible {
         
         func runExpression(inContext context: Context) throws -> Context.ContextValue? {
             switch compiled[position] {
-            case 0x01:
+            case Expression.variable:
                 position += 1
                 var path = [String]()
                 
@@ -190,9 +190,6 @@ public final class Template : CustomValueConvertible {
                 }
                 
                 return contextValue
-            case 0x02:
-                position += 1
-                return .value(true)
             default:
                 throw TemplateError.invalidExpression(compiled[position])
             }
@@ -204,23 +201,22 @@ public final class Template : CustomValueConvertible {
                 case 0x00:
                     position += 1
                     return
-                case 0x01:
+                case Element.rawData:
+                    try compiled.require(5, afterPosition: position)
                     position += 1
                     
-                    loop: while position < compiled.count {
-                        defer { position += 1 }
-                        
-                        if compiled[position] == 0x00 {
-                            break loop
-                        }
-                        
-                        output.append(compiled[position])
-                    }
-                case 0x02:
+                    let rawDataSize = Int(compiled[position..<position + 4].makeUInt32())
+                    position += 4
+                    
+                    try compiled.require(rawDataSize, afterPosition: position)
+                    
+                    output.append(contentsOf: Array(compiled[position..<position + rawDataSize]))
+                    position += rawDataSize
+                case Element.statement:
                     position += 1
                     
                     switch compiled[position] {
-                    case 0x01:
+                    case Statement.if:
                         guard let anyContextValue = try runExpression(inContext: context), case .value(let anyExpression) = anyContextValue else {
                             throw TemplateError.expectedBoolean(found: nil)
                         }
@@ -252,7 +248,7 @@ public final class Template : CustomValueConvertible {
                                 try runStatements(inContext: context)
                             }
                         }
-                    case 0x02:
+                    case Statement.for:
                         position += 1
                         
                         let variableName = try parseCString()
@@ -297,7 +293,7 @@ public final class Template : CustomValueConvertible {
                         }
                         
                         position += 1
-                    case 0x03:
+                    case Statement.print:
                         position += 1
                         
                         guard let contextValue = try runExpression(inContext: context), case .value(let value) = contextValue else {

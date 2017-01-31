@@ -39,37 +39,43 @@ public enum LeafSyntax: TemplatingSyntax {
         func parseTag() throws -> LeafCompileClosure {
             var tagName = [UInt8]()
             
+            // Constructs a tag
             tagNameLoop: while position < input.count {
                 defer { position += 1 }
                 
-                // " "
-                guard input[position] != 0x20 else {
+                // The character mustn't be whitepsace
+                guard !SpecialCharacters.whitespace.contains(input[position]) else {
                     throw LeafError.tagContainsWhitespace
                 }
                 
-                // "("
-                if input[position] == 0x28 {
+                if input[position] == SpecialCharacters.argumentsOpen {
                     break tagNameLoop
                 }
                 
                 tagName.append(input[position])
             }
             
+            // Find the matching tag if possible
             guard let tag = tags.first(where: { $0.name == tagName }) else {
                 throw LeafError.unknownTag(tagName)
             }
             
+            // Compile the tag to a closure and add it to the compiler tasks
             return try tag.compile(atPosition: &position, inCode: input, byTemplatingLanguage: LeafSyntax.self, atPath: path, inContext: context)
         }
         
         while position < input.count {
-            // "#"
-            if input[position] == 0x23 {
+            if input[position] == SpecialCharacters.pound {
                 if rawBuffer.count > 0 {
                     let rawClosureBuffer = rawBuffer
                     
                     compilerClosures.append { _ in
-                        return [0x01] + rawClosureBuffer + [0x00]
+                        var closureBuffer = [UInt8]()
+                        closureBuffer.append(Element.rawData)
+                        closureBuffer.append(contentsOf: UInt32(rawClosureBuffer.count).makeBytes())
+                        closureBuffer.append(contentsOf: rawClosureBuffer)
+                        
+                        return closureBuffer
                     }
                     
                     rawBuffer = []
@@ -92,9 +98,9 @@ public enum LeafSyntax: TemplatingSyntax {
         }
         
         if rawBuffer.count > 0 {
-            compiledTemplate.append(0x01)
+            compiledTemplate.append(Element.rawData)
+            compiledTemplate.append(contentsOf: UInt32(rawBuffer.count).makeBytes())
             compiledTemplate.append(contentsOf: rawBuffer)
-            compiledTemplate.append(0x00)
             rawBuffer = []
         }
         
