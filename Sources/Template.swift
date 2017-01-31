@@ -1,46 +1,6 @@
 import Foundation
 import MongoKitten
 
-public enum TemplateError: Error {
-    case invalidElement(UInt8)
-    case invalidStatement(UInt8)
-    case invalidExpression(UInt8)
-    case unableToInstantiateString(fromBytes: [UInt8])
-    case emptyVariablePath
-    case variableNotADocument(atKey: String)
-    case loopingOverNil
-    case unclosedLoop
-    case loopingOverNonArrayType
-    case fileDoesNotExist(atPath: String)
-    case unexpectedEndOfTemplate
-    case expectedBoolean(found: ValueConvertible?)
-}
-
-extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == Int {
-    internal func makeUInt32() -> UInt32 {
-        var val: UInt32 = 0
-        val |= self.count > 3 ? UInt32(self[startIndex.advanced(by: 3)]) << 24 : 0
-        val |= self.count > 2 ? UInt32(self[startIndex.advanced(by: 2)]) << 16 : 0
-        val |= self.count > 1 ? UInt32(self[startIndex.advanced(by: 1)]) << 8 : 0
-        val |= self.count > 0 ? UInt32(self[startIndex]) : 0
-        
-        return val
-    }
-}
-
-extension UInt32 {
-    internal func makeBytes() -> [UInt8] {
-        let integer = self.littleEndian
-        
-        return [
-            UInt8(integer & 0xFF),
-            UInt8((integer >> 8) & 0xFF),
-            UInt8((integer >> 16) & 0xFF),
-            UInt8((integer >> 24) & 0xFF),
-        ]
-    }
-}
-
 public protocol TemplatingSyntax {
     static func compile(_ file: String, atPath path: String, inContext context: Any?) throws -> Template
     static func compile(fromData data: [UInt8], atPath path: String, inContext context: Any?) throws -> Template
