@@ -51,6 +51,19 @@ class KittenTemplatingTests: XCTestCase {
         
         print(string)
     }
+    
+    func testExample2() throws {
+        let template = try LeafSyntax.compile("html.leaf", atPath: workDir)
+        
+        let output = try template.run()
+        
+        guard let string = String(bytes: output, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        print(string)
+    }
 
     static var allTests : [(String, (KittenTemplatingTests) -> () throws -> Void)] {
         return [

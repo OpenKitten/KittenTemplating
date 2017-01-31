@@ -1,11 +1,28 @@
-public protocol Tag {
+public typealias LeafCompileContext = LeafSyntax.CompileContext
+public typealias LeafCompileClosure = ((LeafCompileContext) throws -> [UInt8])
+
+public protocol LeafTag {
     static var stringName: String { get }
     static var name: [UInt8] { get }
     
-    static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String) throws -> [UInt8]
+    static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure
 }
 
-extension Tag {
+public protocol BasicLeafTag : LeafTag {
+    static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8]
+}
+
+extension BasicLeafTag {
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
+        let bitcode = try Self.compile(atPosition: &position, inCode: input, byTemplatingLanguage: language, atPath: path, inContext: context)
+
+        return { _ in
+            return bitcode
+        }
+    }
+}
+
+extension LeafTag {
     public static var name: [UInt8] {
         return [UInt8](Self.stringName.utf8)
     }
@@ -21,6 +38,7 @@ public enum LeafError: Error {
     case variablePathContainsWhitespace
     case missingQuotationMark
     case invalidString
+    case notExported(String)
 }
 
 fileprivate func compileVariablePath(fromData path: [UInt8]) throws -> [UInt8] {
@@ -36,10 +54,10 @@ fileprivate func compileVariablePath(fromData path: [UInt8]) throws -> [UInt8] {
         } + [0x00, 0x00]
 }
 
-public struct LeafPrint : Tag {
+public struct LeafPrint : BasicLeafTag {
     public static var stringName: String = ""
     
-    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String) throws -> [UInt8] {
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8] {
         var variableBytes = [UInt8]()
         
         variableLoop: while position < input.count {
@@ -59,10 +77,10 @@ public struct LeafPrint : Tag {
     }
 }
 
-public struct LeafEmbed : Tag {
+public struct LeafEmbed : BasicLeafTag {
     public static var stringName = "embed"
     
-    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String) throws -> [UInt8] {
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8] {
         // " (quotation mark)
         guard input.count + 1 > position, input[position] == 0x22 else {
             throw LeafError.missingQuotationMark
@@ -94,7 +112,7 @@ public struct LeafEmbed : Tag {
             throw LeafError.invalidString
         }
         
-        var subTemplateCode = try language.compile(file + ".leaf", atPath: path).compiled
+        var subTemplateCode = try language.compile(file + ".leaf", atPath: path, inContext: context).compiled
         
         subTemplateCode.removeLast()
         
@@ -102,10 +120,108 @@ public struct LeafEmbed : Tag {
     }
 }
 
-public struct LeafExtend : Tag {
+public struct LeafExport : LeafTag {
+    public static var stringName = "export"
+    
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
+        // " (quotation mark)
+        guard input.count + 1 > position, input[position] == 0x22 else {
+            throw LeafError.missingQuotationMark
+        }
+        
+        position += 1
+        
+        var variableBytes = [UInt8]()
+        
+        stringLoop: while position < input.count {
+            defer { position += 1 }
+            
+            // "\""
+            if input[position] == 0x22 {
+                break stringLoop
+            }
+            
+            variableBytes.append(input[position])
+        }
+        
+        // ")"
+        guard input.count > position, input[position] == 0x29 else {
+            throw LeafError.missingQuotationMark
+        }
+        
+        position += 1
+        
+        guard let name = String(bytes: variableBytes, encoding: .utf8) else {
+            throw LeafError.invalidString
+        }
+        
+        let template = try LeafSyntax.parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
+        
+        var exported = context.options["exports"] as? [String: [UInt8]] ?? [:]
+        
+        exported[name] = template
+        
+        context.options["exports"] = exported
+        
+        return { _ in
+            return []
+        }
+    }
+}
+
+public struct LeafImport : LeafTag {
+    public static var stringName = "import"
+    
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
+        // " (quotation mark)
+        guard input.count + 1 > position, input[position] == 0x22 else {
+            throw LeafError.missingQuotationMark
+        }
+        
+        position += 1
+        
+        var variableBytes = [UInt8]()
+        
+        stringLoop: while position < input.count {
+            defer { position += 1 }
+            
+            // "\""
+            if input[position] == 0x22 {
+                break stringLoop
+            }
+            
+            variableBytes.append(input[position])
+        }
+        
+        // ")"
+        guard input.count > position, input[position] == 0x29 else {
+            throw LeafError.missingQuotationMark
+        }
+        
+        position += 1
+        
+        guard let exportName = String(bytes: variableBytes, encoding: .utf8) else {
+            throw LeafError.invalidString
+        }
+        
+        return { context in
+            guard let exports = context.options["exports"] as? [String: [UInt8]], let uncompiledTemplate = exports[exportName] else {
+                throw LeafError.notExported(exportName)
+            }
+            
+            var subTemplateCode = try language.compile(fromData: uncompiledTemplate, atPath: path, inContext: context).compiled
+            
+            subTemplateCode.removeLast()
+            
+            return subTemplateCode
+        }
+    }
+}
+
+public struct LeafExtend : LeafTag {
     public static var stringName = "extend"
     
-    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String) throws -> [UInt8] {
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
         // " (quotation mark)
         guard input.count + 1 > position, input[position] == 0x22 else {
             throw LeafError.missingQuotationMark
@@ -137,18 +253,20 @@ public struct LeafExtend : Tag {
             throw LeafError.invalidString
         }
         
-        var subTemplateCode = try language.compile(file + ".leaf", atPath: path).compiled
-        
-        subTemplateCode.removeLast()
-        
-        return subTemplateCode
+        return { context in
+            var subTemplateCode = try language.compile(file + ".leaf", atPath: path, inContext: context).compiled
+            
+            subTemplateCode.removeLast()
+            
+            return subTemplateCode
+        }
     }
 }
 
-public struct LeafLoop : Tag {
+public struct LeafLoop : BasicLeafTag {
     public static var stringName = "loop"
     
-    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String) throws -> [UInt8] {
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8] {
         var newVariableBytes = [UInt8]()
         var oldVariableBytes = [UInt8]()
         
@@ -197,7 +315,7 @@ public struct LeafLoop : Tag {
             throw LeafError.invalidSecondArugmentInLoop
         }
         
-        let subTemplateCode = try LeafSyntax.parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
+        let subTemplateCode = try LeafSyntax.compileSubTemplate(atPosition: &position, inCode: input, atPath: path)
         
         let oldVariablePath = try compileVariablePath(fromData: oldVariableBytes)
         

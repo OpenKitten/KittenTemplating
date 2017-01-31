@@ -9,22 +9,33 @@
 import Foundation
 
 public enum LeafSyntax: TemplatingSyntax {
-    public static var tags: [Tag.Type] = [
+    public static var tags: [LeafTag.Type] = [
         LeafPrint.self,
         LeafLoop.self,
         LeafEmbed.self,
+        LeafImport.self,
+        LeafExport.self,
+        LeafExtend.self
     ]
     
-    public static func compile(fromData input: [UInt8], atPath path: String) throws -> Template {
-        return Template(compiled: try LeafSyntax.compile(fromData: input, atPath: path))
+    public class CompileContext {
+        var options = [String: Any]()
+        
+        fileprivate init() {}
     }
     
-    private static func compile(fromData input: [UInt8], atPath path: String) throws -> [UInt8] {
+    public static func compile(fromData input: [UInt8], atPath path: String, inContext context: Any? = nil) throws -> Template {
+        return Template(compiled: try LeafSyntax.compile(fromData: input, atPath: path, inContext: context))
+    }
+    
+    private static func compile(fromData input: [UInt8], atPath path: String, inContext context: Any? = nil) throws -> [UInt8] {
+        let context = (context as? CompileContext) ?? CompileContext()
         var position = 0
         var rawBuffer = [UInt8]()
+        var compilerClosures = [LeafCompileClosure]()
         var compiledTemplate = [UInt8]()
         
-        func parseTag() throws -> [UInt8] {
+        func parseTag() throws -> LeafCompileClosure {
             var tagName = [UInt8]()
             
             tagNameLoop: while position < input.count {
@@ -43,27 +54,29 @@ public enum LeafSyntax: TemplatingSyntax {
                 tagName.append(input[position])
             }
             
-            
             guard let tag = tags.first(where: { $0.name == tagName }) else {
                 throw LeafError.unknownTag(tagName)
             }
             
-            return try tag.compile(atPosition: &position, inCode: input, byTemplatingLanguage: LeafSyntax.self, atPath: path)
+            return try tag.compile(atPosition: &position, inCode: input, byTemplatingLanguage: LeafSyntax.self, atPath: path, inContext: context)
         }
         
         while position < input.count {
             // "#"
             if input[position] == 0x23 {
                 if rawBuffer.count > 0 {
-                    compiledTemplate.append(0x01)
-                    compiledTemplate.append(contentsOf: rawBuffer)
-                    compiledTemplate.append(0x00)
+                    let rawClosureBuffer = rawBuffer
+                    
+                    compilerClosures.append { _ in
+                        return [0x01] + rawClosureBuffer + [0x00]
+                    }
+                    
                     rawBuffer = []
                 }
                 
                 position += 1
                 
-                compiledTemplate.append(contentsOf: try parseTag())
+                compilerClosures.append(try parseTag())
             // Null terminator
             } else if input[position] != 0x00 {
                 rawBuffer.append(input[position])
@@ -71,6 +84,10 @@ public enum LeafSyntax: TemplatingSyntax {
             } else {
                 throw LeafError.nullTerminatorInTemplate
             }
+        }
+        
+        for closure in compilerClosures {
+            compiledTemplate.append(contentsOf: try closure(context))
         }
         
         if rawBuffer.count > 0 {
@@ -85,7 +102,7 @@ public enum LeafSyntax: TemplatingSyntax {
         return compiledTemplate
     }
     
-    internal static func parseSubTemplate(atPosition position: inout Int, inCode input: [UInt8], atPath path: String) throws -> Template {
+    internal static func parseSubTemplate(atPosition position: inout Int, inCode input: [UInt8], atPath path: String) throws -> [UInt8] {
         var check = false
         var subTemplate = [UInt8]()
         
@@ -120,6 +137,12 @@ public enum LeafSyntax: TemplatingSyntax {
         guard check else {
             throw LeafError.tagNotClosed
         }
+        
+        return subTemplate
+    }
+    
+    internal static func compileSubTemplate(atPosition position: inout Int, inCode input: [UInt8], atPath path: String) throws -> Template {
+        let subTemplate = try parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
         
         return try self.compile(fromData: subTemplate, atPath: path)
     }

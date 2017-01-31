@@ -15,19 +15,17 @@ public enum TemplateError: Error {
 }
 
 public protocol TemplatingSyntax {
-    static func compile(_ file: String, atPath path: String) throws -> Template
-    static func compile(fromData data: [UInt8], atPath path: String) throws -> Template
-    
-    static var tags: [Tag.Type] { get }
+    static func compile(_ file: String, atPath path: String, inContext context: Any?) throws -> Template
+    static func compile(fromData data: [UInt8], atPath path: String, inContext context: Any?) throws -> Template
 }
 
 extension TemplatingSyntax {
-    public static func compile(_ file: String, atPath path: String) throws -> Template {
+    public static func compile(_ file: String, atPath path: String, inContext context: Any? = nil) throws -> Template {
         guard let data = FileManager.default.contents(atPath: path + file) else {
             throw TemplateError.fileDoesNotExist(atPath: path + file)
         }
         
-        return try Self.compile(fromData: try data.makeBytes(), atPath: path)
+        return try Self.compile(fromData: try data.makeBytes(), atPath: path, inContext: context)
     }
 }
 
