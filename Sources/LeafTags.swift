@@ -102,6 +102,49 @@ public struct LeafEmbed : Tag {
     }
 }
 
+public struct LeafExtend : Tag {
+    public static var stringName = "extend"
+    
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String) throws -> [UInt8] {
+        // " (quotation mark)
+        guard input.count + 1 > position, input[position] == 0x22 else {
+            throw LeafError.missingQuotationMark
+        }
+        
+        position += 1
+        
+        var variableBytes = [UInt8]()
+        
+        stringLoop: while position < input.count {
+            defer { position += 1 }
+            
+            // "\""
+            if input[position] == 0x22 {
+                break stringLoop
+            }
+            
+            variableBytes.append(input[position])
+        }
+        
+        // ")"
+        guard input.count > position, input[position] == 0x29 else {
+            throw LeafError.missingQuotationMark
+        }
+        
+        position += 1
+        
+        guard let file = String(bytes: variableBytes, encoding: .utf8) else {
+            throw LeafError.invalidString
+        }
+        
+        var subTemplateCode = try language.compile(file + ".leaf", atPath: path).compiled
+        
+        subTemplateCode.removeLast()
+        
+        return subTemplateCode
+    }
+}
+
 public struct LeafLoop : Tag {
     public static var stringName = "loop"
     
