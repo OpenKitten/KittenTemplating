@@ -15,8 +15,9 @@ public enum LeafSyntax: TemplatingSyntax {
         LeafEmbed.self,
         LeafImport.self,
         LeafExport.self,
-        LeafExtend.self
-    ]
+        LeafExtend.self,
+        LeafIf.self,
+        ]
     
     public class CompileContext {
         var options = [String: Any]()
@@ -77,7 +78,7 @@ public enum LeafSyntax: TemplatingSyntax {
                 position += 1
                 
                 compilerClosures.append(try parseTag())
-            // Null terminator
+                // Null terminator
             } else if input[position] != 0x00 {
                 rawBuffer.append(input[position])
                 position += 1
@@ -121,14 +122,24 @@ public enum LeafSyntax: TemplatingSyntax {
         }
         
         check = false
+        var tagOpenCounter = 0
         
         endTagLoop: while position < input.count {
             defer { position += 1 }
             
+            // "{"
+            if input[position] == 0x7b {
+                tagOpenCounter += 1
+            }
+            
             // "}"
             if input[position] == 0x7d {
-                check = true
-                break endTagLoop
+                if tagOpenCounter == 0 {
+                    check = true
+                    break endTagLoop
+                } else {
+                    tagOpenCounter -= 1
+                }
             }
             
             subTemplate.append(input[position])

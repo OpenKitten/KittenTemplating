@@ -1,3 +1,5 @@
+import BSON
+
 public typealias LeafCompileContext = LeafSyntax.CompileContext
 public typealias LeafCompileClosure = ((LeafCompileContext) throws -> [UInt8])
 
@@ -15,7 +17,7 @@ public protocol BasicLeafTag : LeafTag {
 extension BasicLeafTag {
     public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
         let bitcode = try Self.compile(atPosition: &position, inCode: input, byTemplatingLanguage: language, atPath: path, inContext: context)
-
+        
         return { _ in
             return bitcode
         }
@@ -85,7 +87,7 @@ public struct LeafEmbed : BasicLeafTag {
         guard input.count + 1 > position, input[position] == 0x22 else {
             throw LeafError.missingQuotationMark
         }
-
+        
         position += 1
         
         var variableBytes = [UInt8]()
@@ -263,6 +265,38 @@ public struct LeafExtend : LeafTag {
     }
 }
 
+public struct LeafIf : LeafTag {
+    public static var stringName = "if"
+    
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
+        var variableBytes = [UInt8]()
+        
+        stringLoop: while position < input.count {
+            defer { position += 1 }
+            
+            // "\""
+            if input[position] == 0x29 {
+                variableBytes.append(0x00)
+                break stringLoop
+            }
+            
+            
+            variableBytes.append(input[position] == 0x2e ? 0x00 : input[position])
+        }
+        
+        let subTemplate = try LeafSyntax.parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
+        
+        return { context in
+            let trueTemplate = try language.compile(fromData: subTemplate, atPath: path, inContext: context).compiled
+            
+            let trueLength = UInt32(trueTemplate.count).makeBytes()
+            let falseLength = UInt32(0).makeBytes()
+            
+            return [0x01, 0x01] + variableBytes + trueLength + falseLength + trueTemplate + []
+        }
+    }
+}
+
 public struct LeafLoop : BasicLeafTag {
     public static var stringName = "loop"
     
@@ -317,6 +351,8 @@ public struct LeafLoop : BasicLeafTag {
         
         let subTemplateCode = try LeafSyntax.compileSubTemplate(atPosition: &position, inCode: input, atPath: path)
         
+        let loopLength = UInt32(subTemplateCode.compiled.count).makeBytes()
+        
         let oldVariablePath = try compileVariablePath(fromData: oldVariableBytes)
         
         var compiledLoop: [UInt8] = [0x02, 0x02]
@@ -324,6 +360,7 @@ public struct LeafLoop : BasicLeafTag {
         compiledLoop.append(0x00)
         compiledLoop.append(0x01)
         compiledLoop.append(contentsOf: oldVariablePath)
+        compiledLoop.append(contentsOf: loopLength)
         compiledLoop.append(contentsOf: subTemplateCode.compiled)
         compiledLoop.append(0x00)
         
