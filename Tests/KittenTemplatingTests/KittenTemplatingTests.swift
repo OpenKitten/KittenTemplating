@@ -49,7 +49,9 @@ class KittenTemplatingTests: XCTestCase {
             return
         }
         
-        print(string)
+        XCTAssert(string.contains("<html>"))
+        XCTAssert(string.contains("</html>"))
+        XCTAssert(string.contains("<body></body>"))
     }
     
     func testExample2() throws {
@@ -62,7 +64,10 @@ class KittenTemplatingTests: XCTestCase {
             return
         }
         
-        print(string)
+        XCTAssert(string.contains("<!DOCTYPE html>"))
+        XCTAssert(string.contains("<html>"))
+        XCTAssert(string.contains("</html>"))
+        XCTAssert(string.contains("<body></body>"))
     }
 
     static var allTests : [(String, (KittenTemplatingTests) -> () throws -> Void)] {

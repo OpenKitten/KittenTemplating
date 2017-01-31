@@ -134,7 +134,7 @@ public struct LeafExport : BasicLeafTag {
         }
         
         // Create a subtemplate
-        let template = try LeafSyntax.parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
+        let template = try input.parseSubTemplate(atPosition: &position)
         
         // Add it the the exported templates list
         var exported = context.options["exports"] as? [String: [UInt8]] ?? [:]
@@ -216,7 +216,7 @@ public struct LeafIf : LeafTag {
         let variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
         
         // Scan for the subtemplate
-        let subTemplate = try LeafSyntax.parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
+        let subTemplate = try input.parseSubTemplate(atPosition: &position)
         
         return { context in
             // Compile the template when `true`

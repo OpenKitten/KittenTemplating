@@ -103,57 +103,8 @@ public enum LeafSyntax: TemplatingSyntax {
         return compiledTemplate
     }
     
-    internal static func parseSubTemplate(atPosition position: inout Int, inCode input: [UInt8], atPath path: String) throws -> [UInt8] {
-        var check = false
-        var subTemplate = [UInt8]()
-        
-        startTagLoop: while position < input.count {
-            defer { position += 1 }
-            
-            // "{"
-            if input[position] == 0x7b {
-                check = true
-                break startTagLoop
-            }
-        }
-        
-        guard check else {
-            throw LeafError.tagNotOpened
-        }
-        
-        check = false
-        var tagOpenCounter = 0
-        
-        endTagLoop: while position < input.count {
-            defer { position += 1 }
-            
-            // "{"
-            if input[position] == 0x7b {
-                tagOpenCounter += 1
-            }
-            
-            // "}"
-            if input[position] == 0x7d {
-                if tagOpenCounter == 0 {
-                    check = true
-                    break endTagLoop
-                } else {
-                    tagOpenCounter -= 1
-                }
-            }
-            
-            subTemplate.append(input[position])
-        }
-        
-        guard check else {
-            throw LeafError.tagNotClosed
-        }
-        
-        return subTemplate
-    }
-    
     internal static func compileSubTemplate(atPosition position: inout Int, inCode input: [UInt8], atPath path: String) throws -> Template {
-        let subTemplate = try parseSubTemplate(atPosition: &position, inCode: input, atPath: path)
+        let subTemplate = try input.parseSubTemplate(atPosition: &position)
         
         return try self.compile(fromData: subTemplate, atPath: path)
     }

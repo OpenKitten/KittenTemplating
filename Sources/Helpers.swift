@@ -33,6 +33,8 @@ internal struct Expression {
 struct SpecialCharacters {
     static let dot: UInt8 = 0x2e
     static let comma: UInt8 = 0x2c
+    static let codeBracketOpen: UInt8 = 0x7b
+    static let codeBracketClose: UInt8 = 0x7d
     static let argumentsClose: UInt8 = 0x29
     static let space: UInt8 = 0x20
     static let quotationMark: UInt8 = 0x22
@@ -126,6 +128,43 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         guard self[position] == character else {
             throw LeafError.missingRequiredCharacter(found: self[position], need: character)
         }
+    }
+    
+    func parseSubTemplate(atPosition position: inout Int) throws -> [UInt8] {
+        var check = false
+        var subTemplate = [UInt8]()
+        
+        skipWhitespace(fromPosition: &position)
+        
+        try self.requireCharacter(SpecialCharacters.codeBracketOpen, atPosition: &position)
+        
+        var tagOpenCounter = 0
+        
+        // Prevent closing too early
+        endTagLoop: while position < self.count {
+            defer { position += 1 }
+            
+            if self[position] == SpecialCharacters.codeBracketOpen {
+                tagOpenCounter += 1
+            }
+            
+            if self[position] == SpecialCharacters.codeBracketClose {
+                if tagOpenCounter == 0 {
+                    check = true
+                    break endTagLoop
+                } else {
+                    tagOpenCounter -= 1
+                }
+            }
+            
+            subTemplate.append(self[position])
+        }
+        
+        guard check else {
+            throw LeafError.tagNotClosed
+        }
+        
+        return subTemplate
     }
 }
 
