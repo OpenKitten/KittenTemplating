@@ -213,7 +213,20 @@ public struct LeafIf : LeafTag {
     
     public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
         // Scan for the variable
-        let variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
+        var variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
+        
+        variableBytes = variableBytes.map { byte in
+            if byte == SpecialCharacters.dot {
+                return 0x00
+            } else {
+                return byte
+            }
+        }
+        
+        // End of last variable path part
+        variableBytes.append(0x00)
+        // End of path
+        variableBytes.append(0x00)
         
         // Scan for the subtemplate
         let subTemplate = try input.parseSubTemplate(atPosition: &position)

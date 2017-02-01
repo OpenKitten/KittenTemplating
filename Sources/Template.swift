@@ -217,12 +217,12 @@ public final class Template : CustomValueConvertible {
                     
                     switch compiled[position] {
                     case Statement.if:
-                        guard let anyContextValue = try runExpression(inContext: context), case .value(let anyExpression) = anyContextValue else {
-                            throw TemplateError.expectedBoolean(found: nil)
-                        }
+                        position += 1
                         
-                        guard let expression = anyExpression as? Bool else {
-                            throw TemplateError.expectedBoolean(found: anyExpression)
+                        var expression = false
+                        
+                        if let anyContextValue = try runExpression(inContext: context), case .value(let anyExpression) = anyContextValue, let booleanExpression = anyExpression as? Bool {
+                            expression = booleanExpression
                         }
                         
                         guard position + 8 < compiled.count else {
@@ -325,6 +325,16 @@ extension ValueConvertible {
         switch self.makeBSONPrimitive() {
         case is String:
             return [UInt8]((self as! String).utf8)
+        case is Int32:
+            return [UInt8]((self as! Int32).description.utf8)
+        case is Int64:
+            return [UInt8]((self as! Int64).description.utf8)
+        case is ObjectId:
+            return [UInt8]((self as! ObjectId).hexString.utf8)
+//        case is Int64:
+//            return [UInt8]((self as! Int64).description.utf8)
+//        case is Int64:
+//            return [UInt8]((self as! Int64).description.utf8)
         default:
             return []
         }
