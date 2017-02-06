@@ -17,6 +17,7 @@ public enum LeafSyntax: TemplatingSyntax {
         LeafExport.self,
         LeafExtend.self,
         LeafIf.self,
+        LeafRaw.self,
         ]
     
     public class CompileContext {

@@ -134,7 +134,7 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         }
     }
     
-    func parseSubTemplate(atPosition position: inout Int) throws -> [UInt8] {
+    func parseSubTemplate(atPosition position: inout Int, countingBrackets: Bool = true) throws -> [UInt8] {
         var check = false
         var subTemplate = [UInt8]()
         
@@ -148,7 +148,7 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         endTagLoop: while position < self.count {
             defer { position += 1 }
             
-            if self[position] == SpecialCharacters.codeBracketOpen {
+            if self[position] == SpecialCharacters.codeBracketOpen && countingBrackets {
                 tagOpenCounter += 1
             }
             
@@ -169,6 +169,24 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         }
         
         return subTemplate
+    }
+    
+    func makeVariablePath() -> [UInt8] {
+        var variableBytes = self.map { byte -> UInt8 in
+            // Instead of separating by dot, the templating bitcode requires `0x00`
+            if byte == SpecialCharacters.dot {
+                return 0x00
+            } else {
+                return byte
+            }
+        }
+        
+        // End of last variable path part
+        variableBytes.append(0x00)
+        // End of path
+        variableBytes.append(0x00)
+        
+        return variableBytes
     }
 }
 

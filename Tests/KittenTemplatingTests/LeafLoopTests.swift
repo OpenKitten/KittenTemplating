@@ -4,13 +4,13 @@ import XCTest
 import BSON
 
 #if Xcode
-    private var workDir: String {
+    internal var workDir: String {
         let parent = #file.characters.split(separator: "/").map(String.init).dropLast().joined(separator: "/")
         let path = "/\(parent)/../../Resources/"
         return path
     }
 #else
-    private let workDir = "./Resources/"
+    internal let workDir = "./Resources/"
 #endif
 
 class LeafLoopTests: XCTestCase {
@@ -117,6 +117,6 @@ class LeafLoopTests: XCTestCase {
             return
         }
         
-        XCTAssert(rendered == "Hello, Rick!\n")
+        XCTAssertEqual(rendered, " Hello, Rick! ")
     }
 }

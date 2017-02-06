@@ -169,7 +169,7 @@ public final class Template : CustomValueConvertible {
                 let firstPart = path.removeFirst()
                 
                 guard let contextValue = context.context[firstPart] else {
-                    throw TemplateError.variableNotADocument(atKey: firstPart)
+                    return nil
                 }
                 
                 if case .value(let value) = contextValue {
@@ -252,9 +252,7 @@ public final class Template : CustomValueConvertible {
                         position += 1
                         
                         let variableName = try parseCString()
-                        guard let contextValue = try runExpression(inContext: context) else {
-                            throw TemplateError.loopingOverNil
-                        }
+                        let contextValue = try runExpression(inContext: context)
                         
                         var newContext = context
                         
@@ -263,26 +261,32 @@ public final class Template : CustomValueConvertible {
                         
                         let oldPosition = position
                         
-                        switch contextValue {
-                        case .cursor(let cursor):
-                            for document in cursor {
-                                defer {
-                                    position = oldPosition
+                        if let contextValue = contextValue {
+                            switch contextValue {
+                            case .cursor(let cursor):
+                                for document in cursor {
+                                    defer {
+                                        position = oldPosition
+                                    }
+                                    newContext.context[variableName] = .value(document)
+                                    try runStatements(inContext: newContext)
                                 }
-                                newContext.context[variableName] = .value(document)
-                                try runStatements(inContext: newContext)
-                            }
-                        case .value(let value):
-                            guard let document = value as? Document, document.validatesAsArray() else {
-                                throw TemplateError.loopingOverNonArrayType
-                            }
-                            
-                            for (_, value) in document {
-                                defer {
-                                    position = oldPosition
+                            case .value(let value):
+                                if let document = value as? Document, document.validatesAsArray() {
+                                    for (_, value) in document {
+                                        defer {
+                                            position = oldPosition
+                                        }
+                                        newContext.context[variableName] = .value(value)
+                                        try runStatements(inContext: newContext)
+                                    }
+                                } else {
+                                    defer {
+                                        position = oldPosition
+                                    }
+                                    newContext.context[variableName] = contextValue
+                                    try runStatements(inContext: newContext)
                                 }
-                                newContext.context[variableName] = .value(value)
-                                try runStatements(inContext: newContext)
                             }
                         }
                         

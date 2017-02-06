@@ -1,0 +1,13 @@
+#html() {
+    #head() {
+        #h1() { Welcome to, #(title) }
+    }
+
+    #body() {
+        #div("container") {
+            #loop(projects, "project") {
+                Project: #(project)
+            }
+        }
+    }
+}

@@ -65,20 +65,6 @@ public enum LeafError: Error {
     case notExported(String)
 }
 
-/// Compiles a variable which is dot.separated for keys within arrays/objects to binary form
-fileprivate func compileVariablePath(fromData path: [UInt8]) throws -> [UInt8] {
-    // " "
-    guard !path.contains(SpecialCharacters.space) else {
-        throw LeafError.variablePathContainsWhitespace
-    }
-    
-    return path.map { byte in
-        // "."->0x00
-        return byte == SpecialCharacters.dot ? 0x00 : byte
-        // Once for the last key, once for the path
-        } + [0x00, 0x00]
-}
-
 /// Prints the variable inbetween the brackets
 public struct LeafPrint : BasicLeafTag {
     public static var stringName: String = ""
@@ -88,10 +74,15 @@ public struct LeafPrint : BasicLeafTag {
         let variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
         
         /// Compiles the variable path which is dot-separated to bitcode
-        let variablePath = try compileVariablePath(fromData: variableBytes)
+        let variablePath = variableBytes.makeVariablePath()
         
-        /// [statement, print, variable] + variable_path
-        return [Element.statement, Statement.print, Expression.variable] + variablePath
+        // Scan for raw data between function brackets
+        if let subTemplate = try? input.parseSubTemplate(atPosition: &position, countingBrackets: false) {
+            
+        } else {
+            /// [statement, print, variable] + variable_path
+            return [Element.statement, Statement.print, Expression.variable] + variablePath
+        }
     }
 }
 
@@ -215,18 +206,7 @@ public struct LeafIf : LeafTag {
         // Scan for the variable
         var variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
         
-        variableBytes = variableBytes.map { byte in
-            if byte == SpecialCharacters.dot {
-                return 0x00
-            } else {
-                return byte
-            }
-        }
-        
-        // End of last variable path part
-        variableBytes.append(0x00)
-        // End of path
-        variableBytes.append(0x00)
+        variableBytes = variableBytes.makeVariablePath()
         
         // Scan for the subtemplate
         let subTemplate = try input.parseSubTemplate(atPosition: &position)
@@ -251,6 +231,27 @@ public struct LeafIf : LeafTag {
     }
 }
 
+/// Displays raw data, ignoring special characters
+public struct LeafRaw : BasicLeafTag {
+    public static var stringName = "raw"
+    
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8] {
+        // Scan for a variable
+        let variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
+        
+        if variableBytes.count == 0 {
+            // Scan for raw data between function brackets
+            let subTemplate = try input.parseSubTemplate(atPosition: &position, countingBrackets: false)
+            
+            return [Element.rawData] + UInt32(subTemplate.count).makeBytes() + subTemplate
+        } else {
+            let variablePath = variableBytes.makeVariablePath()
+            
+            return [Element.statement, Statement.print, Expression.variable] + variablePath
+        }
+    }
+}
+
 /// A for..in loop
 public struct LeafLoop : BasicLeafTag {
     public static var stringName = "loop"
@@ -259,6 +260,7 @@ public struct LeafLoop : BasicLeafTag {
         // Scan for the variable
         let oldVariableBytes = try input.scanUntil([SpecialCharacters.space, SpecialCharacters.comma], fromPosition: &position)
         
+        // Skip whitespace
         input.skip(fromPosition: &position, characters: SpecialCharacters.space, SpecialCharacters.comma, SpecialCharacters.endLine)
         
         // Find the new variable name
@@ -274,7 +276,7 @@ public struct LeafLoop : BasicLeafTag {
         let loopLength = UInt32(subTemplateCode.compiled.count).makeBytes()
         
         // Construct the old variable to a null-separated-path
-        let oldVariablePath = try compileVariablePath(fromData: oldVariableBytes)
+        let oldVariablePath = oldVariableBytes.makeVariablePath()
         
         
         var compiledLoop: [UInt8] = [Element.statement, Statement.for]
