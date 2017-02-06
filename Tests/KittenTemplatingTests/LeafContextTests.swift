@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
-@testable import Leaf
+import BSON
+@testable import KittenTemplating
 
 class ContextTests: XCTestCase {
     static let allTests = [
@@ -23,8 +24,7 @@ class ContextTests: XCTestCase {
             return
         }
         
-        let expectation = "Hello, World!"
-        XCTAssertEqual(rendered, expectation)
+        XCTAssertEqual(rendered, "Hello, World!")
     }
     
     func testNested() throws {
@@ -36,81 +36,99 @@ class ContextTests: XCTestCase {
             return
         }
         
-        XCTAssertEqual(rendered, "Hello, World!")
+        XCTAssertEqual(rendered, " Hello, World! ")
     }
     
     func testLoop() throws {
-        let raw = "#loop(friends, \"friend\") { Hello, #(friend)! }"
-        let template = try stem.spawnLeaf(raw: raw)
-        let context = Context(["friends": ["a", "b", "c", "#loop"]])
-        let rendered = try stem.render(template, with: context).string
-        let expectation =  "Hello, a!\nHello, b!\nHello, c!\nHello, #loop!\n"
-        XCTAssert(rendered == expectation)
+        let template = try LeafSyntax.compile(fromData: [UInt8]("#loop(friends, \"friend\") { Hello, #(friend)! }".utf8), atPath: workDir + "Leaf/")
+        let renderedBytes = try template.run(inContext: ["friends": ["a", "b", "c", "#loop"] as Document])
+        
+        guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        XCTAssertEqual(rendered, " Hello, a!  Hello, b!  Hello, c!  Hello, #loop! ")
     }
     
     func testNamedInner() throws {
-        let raw = "#(name) { #(name) }" // redundant, but should render as an inner stem
-        let template = try stem.spawnLeaf(raw: raw)
-        let context = Context(["name": "foo"])
-        let rendered = try stem.render(template, with: context).string
-        let expectation = "foo"
-        XCTAssert(rendered == expectation)
+        let template = try LeafSyntax.compile(fromData: [UInt8]("#(name) { #(name) }".utf8), atPath: workDir + "Leaf/")
+        let renderedBytes = try template.run(inContext: ["name": "foo"])
+        
+        guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        XCTAssertEqual(rendered, " foo ")
     }
     
     func testDualContext() throws {
-        let raw = "Let's render #(friend) { #(name) is friends with #(friend.name) } "
-        let template = try stem.spawnLeaf(raw: raw)
-        let context = Context(["name": "Foo", "friend": ["name": "Bar"]])
-        let rendered = try stem.render(template, with: context).string
-        let expectation = "Let's render Foo is friends with Bar"
-        XCTAssertEqual(rendered, expectation)
+        let template = try LeafSyntax.compile(fromData: [UInt8]("Let's render #(friend) { #(name) is friends with #(friend.name) } ".utf8), atPath: workDir + "Leaf/")
+        let renderedBytes = try template.run(inContext: ["name": "Foo", "friend": ["name": "Bar"] as Document])
+        
+        guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        XCTAssertEqual(rendered, "Let's render  Foo is friends with Bar  ")
     }
     
     func testMultiContext() throws {
-        let raw = "#(a) { #(self.b) { #(self.c) { #(self.path.1) } } }"
-        let template = try stem.spawnLeaf(raw: raw)
-        let context = Context(["a": ["b": ["c": ["path": ["array-variant", "HEllo"]]]]])
-        let rendered = try stem.render(template, with: context).string
-        let expectation = "HEllo"
-        XCTAssert(rendered == expectation, "have: \(rendered) want: \(expectation)")
+        let template = try LeafSyntax.compile(fromData: [UInt8]("#(a) { #(self.b) { #(self.c) { #(self.path.1) } } }".utf8), atPath: workDir + "Leaf/")
+        let renderedBytes = try template.run(inContext: ["a": ["b": ["c": ["path": ["array-variant", "HEllo"] as Document] as Document] as Document] as Document])
+        
+        guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        XCTAssertEqual(rendered, "   HEllo   ")
     }
     
     func testIfChain() throws {
-        let raw = "#if(key-zero) { Hi, A! } ##if(key-one) { Hi, B! } ##else() { Hi, C! }"
-        let template = try stem.spawnLeaf(raw: raw)
+        let template = try LeafSyntax.compile(fromData: [UInt8]("#if(key-zero) { Hi, A! } ##if(key-one) { Hi, B! } ##else() { Hi, C! }".utf8), atPath: workDir + "Leaf/")
+        
         let cases: [(key: String, bool: Bool, expectation: String)] = [
-            ("key-zero", true, "Hi, A!"),
-            ("key-zero", false, "Hi, C!"),
-            ("key-one", true, "Hi, B!"),
-            ("key-one", false, "Hi, C!"),
-            ("s••z", true, "Hi, C!"),
-            ("$º–%,🍓", true, "Hi, C!"),
-            ("]", true, "Hi, C!"),
+            ("key-zero", true, " Hi, A! "),
+            ("key-zero", false, " Hi, C! "),
+            ("key-one", true, " Hi, B! "),
+            ("key-one", false, " Hi, C! "),
+            ("s••z", true, " Hi, C! "),
+            ("$º–%,🍓", true, " Hi, C! "),
+            ("]", true, " Hi, C! "),
             ]
         
-        try cases.forEach { key, bool, expectation in
-            let context = Context([key: .bool(bool)])
-            let rendered = try stem.render(template, with: context).string
-            XCTAssert(rendered == expectation, "have: \(rendered) want: \(expectation)")
+        for (key, bool, expectation) in cases {
+            let renderedBytes = try template.run(inContext: [key: bool])
+            
+            guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+                XCTFail()
+                return
+            }
+            
+            XCTAssertEqual(rendered, expectation)
         }
     }
     
     func testNestedComplex() throws {
-        let raw = "Hello, #(path.to.person.0.name)!"
-        let context = try Node(node:[
+        let template = try LeafSyntax.compile(fromData: [UInt8]("Hello, #(path.to.person.0.name)!".utf8), atPath: workDir + "Leaf/")
+        let renderedBytes = try template.run(inContext: [
             "path": [
                 "to": [
                     "person": [
-                        ["name": "World"]
-                    ]
-                ]
-            ]
+                        ["name": "World"] as Document
+                    ] as Document
+                ] as Document
+            ] as Document
             ])
         
-        let template = try stem.spawnLeaf(raw: raw)
-        let loadable = Context(context)
-        let rendered = try stem.render(template, with: loadable).string
-        let expectation = "Hello, World!"
-        XCTAssert(rendered == expectation)
+        guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        XCTAssertEqual(rendered, "Hello, World!")
     }
 }

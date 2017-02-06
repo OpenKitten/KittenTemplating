@@ -72,14 +72,35 @@ public struct LeafPrint : BasicLeafTag {
     /// Compiles this tag to a print statement to print the variable as a string
     public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8] {
         let variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
-        
-        /// Compiles the variable path which is dot-separated to bitcode
-        let variablePath = variableBytes.makeVariablePath()
+        var variablePath = variableBytes.makeVariablePath(inContext: context)
+        let oldPosition = position
         
         // Scan for raw data between function brackets
-        if let subTemplate = try? input.parseSubTemplate(atPosition: &position, countingBrackets: false) {
+        if let subTemplate = try? input.parseSubTemplate(atPosition: &position) {
+            var newScope = variablePath
             
+            // Remove null terminators
+            newScope.removeLast(2)
+            
+            var oldScope: [UInt8]? = nil
+            
+            if let currentScope = context.options["scope"] as? [UInt8] {
+                oldScope = currentScope
+            }
+            
+            context.options["scope"] = newScope
+            defer {
+                context.options["scope"] = oldScope
+            }
+            
+            var subTemplateBitcode = try LeafSyntax.compile(fromData: subTemplate, atPath: path, inContext: context).compiled
+            context.options["scope"] = nil
+            
+            subTemplateBitcode.removeLast()
+            
+            return subTemplateBitcode
         } else {
+            position = oldPosition
             /// [statement, print, variable] + variable_path
             return [Element.statement, Statement.print, Expression.variable] + variablePath
         }
@@ -198,6 +219,31 @@ public struct LeafExtend : LeafTag {
     }
 }
 
+public struct LeafIndex: LeafTag {
+    
+}
+
+public struct LeafElse : LeafTag {
+    public static var stringName = "else"
+    
+    public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> LeafCompileClosure {
+        try input.requireCharacter(SpecialCharacters.argumentsClose, atPosition: &position)
+        
+        input.skipWhitespace(fromPosition: &position)
+        
+        // Scan for the subtemplate
+        let subTemplate = try input.parseSubTemplate(atPosition: &position)
+        
+        return { context in
+            // Compile the template when `true`
+            var compiledTemplate = try language.compile(fromData: subTemplate, atPath: path, inContext: context).compiled
+            
+            compiledTemplate.removeLast()
+            return compiledTemplate
+        }
+    }
+}
+
 /// An if statement, also parses else-ifs and else
 public struct LeafIf : LeafTag {
     public static var stringName = "if"
@@ -206,27 +252,58 @@ public struct LeafIf : LeafTag {
         // Scan for the variable
         var variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
         
-        variableBytes = variableBytes.makeVariablePath()
+        variableBytes = variableBytes.makeVariablePath(inContext: context)
         
         // Scan for the subtemplate
         let subTemplate = try input.parseSubTemplate(atPosition: &position)
+        
+        let elseClosure: LeafCompileClosure?
+        
+        input.skipWhitespace(fromPosition: &position)
+        
+        if position + 2 < input.count && input[position] == SpecialCharacters.pound && input[position + 1] == SpecialCharacters.pound {
+            position += 2
+            
+            let tagName = try input.scanUntil(SpecialCharacters.argumentsOpen, fromPosition: &position)
+            
+            for character in tagName {
+                guard !SpecialCharacters.whitespace.contains(character) else {
+                    throw LeafError.tagContainsWhitespace
+                }
+            }
+            
+            if tagName == LeafElse.name {
+                elseClosure = try LeafElse.compile(atPosition: &position, inCode: input, byTemplatingLanguage: language, atPath: path, inContext: context)
+            } else {
+                // Find the matching tag if possible
+                guard let tag = LeafSyntax.tags.first(where: { $0.name == tagName }) else {
+                    throw LeafError.unknownTag(tagName)
+                }
+                
+                // Compile the tag to a closure and add it to the compiler tasks
+                elseClosure = try tag.compile(atPosition: &position, inCode: input, byTemplatingLanguage: LeafSyntax.self, atPath: path, inContext: context)
+            }
+        } else {
+            elseClosure = nil
+        }
         
         return { context in
             // Compile the template when `true`
             let trueTemplate = try language.compile(fromData: subTemplate, atPath: path, inContext: context).compiled
             
             // TODO: False template
+            let elseTemplate = try elseClosure?(context) ?? []
             
             // Convert the true-template-length to an UInt32 as bytes
             let trueLength = UInt32(trueTemplate.count).makeBytes()
             
             // Convert the false-template-length to an UInt32 as bytes
             // TODO: Unsupported
-            let falseLength = UInt32(0).makeBytes()
+            let falseLength = UInt32(elseTemplate.count).makeBytes()
             
             // Construct the bitcode
             // [statement, if, boolean_variable] + skip_length_true + skip_length_false + true_template + false_template
-            return [Element.statement, Statement.if, Expression.variable] + variableBytes + trueLength + falseLength + trueTemplate + []
+            return [Element.statement, Statement.if, Expression.variable] + variableBytes + trueLength + falseLength + trueTemplate + elseTemplate
         }
     }
 }
@@ -245,7 +322,7 @@ public struct LeafRaw : BasicLeafTag {
             
             return [Element.rawData] + UInt32(subTemplate.count).makeBytes() + subTemplate
         } else {
-            let variablePath = variableBytes.makeVariablePath()
+            let variablePath = variableBytes.makeVariablePath(inContext: context)
             
             return [Element.statement, Statement.print, Expression.variable] + variablePath
         }
@@ -276,7 +353,7 @@ public struct LeafLoop : BasicLeafTag {
         let loopLength = UInt32(subTemplateCode.compiled.count).makeBytes()
         
         // Construct the old variable to a null-separated-path
-        let oldVariablePath = oldVariableBytes.makeVariablePath()
+        let oldVariablePath = oldVariableBytes.makeVariablePath(inContext: context)
         
         
         var compiledLoop: [UInt8] = [Element.statement, Statement.for]

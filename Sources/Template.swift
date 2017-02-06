@@ -324,6 +324,49 @@ public final class Template : CustomValueConvertible {
     }
 }
 
+enum HTMLCharacters: UInt8 {
+    case quotation = 0x22
+    case ampersand = 0x26
+    case apostrophe = 0x27
+    case lessThan = 0x3c
+    case greaterThan = 0x3e
+    
+    var escaped: [UInt8] {
+        var buffer: [UInt8]
+        
+        switch self {
+        case .quotation:
+            buffer = [UInt8]("quot".utf8)
+        case .ampersand:
+            buffer = [UInt8]("amp".utf8)
+        case .apostrophe:
+            buffer = [SpecialCharacters.pound] + [UInt8]("39".utf8)
+        case .lessThan:
+            buffer = [UInt8]("lt".utf8)
+        case .greaterThan:
+            buffer = [UInt8]("gt".utf8)
+        }
+        
+        return [HTMLCharacters.ampersand.rawValue] + buffer + [SpecialCharacters.semicolon]
+    }
+}
+
+extension String {
+    public func htmlEscaped() -> String {
+        var buffer = [UInt8]()
+        
+        [UInt8](self.utf8).forEach { byte in
+            if let character = HTMLCharacters(rawValue: byte) {
+                buffer.append(contentsOf: character.escaped)
+            } else {
+                buffer.append(byte)
+            }
+        }
+        
+        return String(bytes: buffer, encoding: .utf8) ?? ""
+    }
+}
+
 extension ValueConvertible {
     func makeTemplatingUTF8String() -> [UInt8] {
         switch self.makeBSONPrimitive() {

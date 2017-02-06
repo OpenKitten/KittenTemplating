@@ -30,6 +30,10 @@ internal struct Expression {
     static let variable: UInt8 = 0x01
 }
 
+struct SpecialWords {
+    static let selfWord: [UInt8] = [UInt8]("self".utf8)
+}
+
 struct SpecialCharacters {
     static let dot: UInt8 = 0x2e
     static let comma: UInt8 = 0x2c
@@ -41,6 +45,7 @@ struct SpecialCharacters {
     static let quotationMark: UInt8 = 0x22
     static let endLine: UInt8 = 0x0a
     static let pound: UInt8 = 0x23
+    static let semicolon: UInt8 = 0x3b
     
     static let whitespace: [UInt8] = [SpecialCharacters.space, SpecialCharacters.endLine]
 }
@@ -171,7 +176,7 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         return subTemplate
     }
     
-    func makeVariablePath() -> [UInt8] {
+    func makeVariablePath(inContext context: LeafSyntax.CompileContext) -> [UInt8] {
         var variableBytes = self.map { byte -> UInt8 in
             // Instead of separating by dot, the templating bitcode requires `0x00`
             if byte == SpecialCharacters.dot {
@@ -185,6 +190,11 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         variableBytes.append(0x00)
         // End of path
         variableBytes.append(0x00)
+        
+        if let variableScope = context.options["scope"] as? [UInt8], variableBytes.count >= 4, Array(variableBytes[0..<4]) == SpecialWords.selfWord {
+            variableBytes.removeFirst(4)
+            variableBytes.insert(contentsOf: variableScope, at: 0)
+        }
         
         return variableBytes
     }
