@@ -129,8 +129,12 @@ extension Swift.Collection where Self.Iterator.Element == UInt8, Self.Index == I
         return try scanUntil(SpecialCharacters.quotationMark, fromPosition: &position)
     }
     
+    func require(_ amount: Int, atPosition position: Int) throws {
+        try self.require(amount - 1, afterPosition: position)
+    }
+    
     func requireCharacter(_ character: UInt8, atPosition position: inout Int) throws {
-        try self.require(1, afterPosition: position)
+        try require(1, atPosition: position)
         
         defer { position += 1 }
         

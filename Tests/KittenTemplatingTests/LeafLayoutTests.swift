@@ -20,7 +20,7 @@ class LayoutTests: XCTestCase {
             return
         }
         
-        XCTAssertEqual(rendered, "Hello, World!")
+        XCTAssertEqual(rendered, " Aloha , World!\n\n\n\n")
     }
     
     func testBasicLayoutFallback() throws {
@@ -32,7 +32,7 @@ class LayoutTests: XCTestCase {
             return
         }
         
-        XCTAssertEqual(rendered, "Hello, World!")
+        XCTAssertEqual(rendered, " Hello , World!\n")
     }
     
     func testSimpleEmbed() throws {
@@ -44,7 +44,7 @@ class LayoutTests: XCTestCase {
             return
         }
         
-        XCTAssertEqual(rendered, "I'm a header! Hello, World!")
+        XCTAssertEqual(rendered, "I'm a header! Hello, World!\n")
     }
     
     func testLayoutEmbedMix() throws {
@@ -59,6 +59,6 @@ class LayoutTests: XCTestCase {
             return
         }
         
-        XCTAssertEqual(rendered, " I'm a header! Hello, World! \n")
+        XCTAssertEqual(rendered, " I'm a header! Hello, World!\n \n")
     }
 }

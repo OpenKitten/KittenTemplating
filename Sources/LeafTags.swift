@@ -175,20 +175,29 @@ public struct LeafImport : LeafTag {
             throw LeafError.invalidString
         }
         
+        // Scan for raw data between function brackets
+        let defaultSubTemplate = try? input.parseSubTemplate(atPosition: &position)
+        
         return { context in
+            var subTemplate: [UInt8]
+            
             // Find the referenced subtemplate
-            guard let exports = context.options["exports"] as? [String: [UInt8]], let uncompiledTemplate = exports[importName] else {
+            if let exports = context.options["exports"] as? [String: [UInt8]], let uncompiledTemplate = exports[importName] {
+                subTemplate = uncompiledTemplate
+            } else if let defaultSubTemplate = defaultSubTemplate {
+                subTemplate = defaultSubTemplate
+            } else {
                 throw LeafError.notExported(importName)
             }
             
             // Compile it
-            var subTemplateCode = try language.compile(fromData: uncompiledTemplate, atPath: path, inContext: context).compiled
+            var subTemplateBitcode = try language.compile(fromData: subTemplate, atPath: path, inContext: context).compiled
             
             // Remove trailing null terminator
-            subTemplateCode.removeLast()
+            subTemplateBitcode.removeLast()
             
             // Embed it
-            return subTemplateCode
+            return subTemplateBitcode
         }
     }
 }
@@ -219,9 +228,9 @@ public struct LeafExtend : LeafTag {
     }
 }
 
-public struct LeafIndex: LeafTag {
-    
-}
+//public struct LeafIndex: LeafTag {
+//    
+//}
 
 public struct LeafElse : LeafTag {
     public static var stringName = "else"
