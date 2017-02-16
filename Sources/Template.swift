@@ -1,5 +1,5 @@
 import Foundation
-import MongoKitten
+import BSON
 
 public protocol TemplatingSyntax {
     static func compile(_ file: String, atPath path: String, inContext context: Any?) throws -> Template
@@ -12,7 +12,7 @@ extension TemplatingSyntax {
             throw TemplateError.fileDoesNotExist(atPath: path + file)
         }
         
-        return try Self.compile(fromData: try data.makeBytes(), atPath: path, inContext: context)
+        return try Self.compile(fromData: Array(data), atPath: path, inContext: context)
     }
 }
 
@@ -83,19 +83,11 @@ extension RegularExpression: ContextValueConvertible {
     }
 }
 
-public final class Template : CustomValueConvertible {
+public final class Template : ValueConvertible {
     public let compiled: [UInt8]
     
     public init(compiled data: [UInt8]) {
         self.compiled = data
-    }
-    
-    public init?(_ value: BSONPrimitive) {
-        guard let value = value as? Binary else {
-            return nil
-        }
-        
-        self.compiled = value.makeBytes()
     }
     
     public func makeBSONPrimitive() -> BSONPrimitive {
@@ -108,7 +100,7 @@ public final class Template : CustomValueConvertible {
     
     public struct Context: ExpressibleByDictionaryLiteral {
         public enum ContextValue: ContextValueConvertible {
-            case cursor(Cursor<Document>)
+            //case cursor(Cursor<Document>)
             case value(ValueConvertible)
             
             public func makeContextValue() -> ContextValue {
@@ -263,14 +255,14 @@ public final class Template : CustomValueConvertible {
                         
                         if let contextValue = contextValue {
                             switch contextValue {
-                            case .cursor(let cursor):
+                            /*case .cursor(let cursor):
                                 for document in cursor {
                                     defer {
                                         position = oldPosition
                                     }
                                     newContext.context[variableName] = .value(document)
                                     try runStatements(inContext: newContext)
-                                }
+                                }*/
                             case .value(let value):
                                 if let document = value as? Document, document.validatesAsArray() {
                                     for (_, value) in document {
