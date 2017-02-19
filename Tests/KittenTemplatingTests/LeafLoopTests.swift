@@ -33,7 +33,7 @@ class LeafLoopTests: XCTestCase {
                 "🐌",
                 "8###z0-1",
                 12
-            ] as Document
+            ] as TemplateContext
             ])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
@@ -51,16 +51,16 @@ class LeafLoopTests: XCTestCase {
                 [
                     "name": "Venus",
                     "age": 12345
-                ] as Document,
+                ] as TemplateContext,
                 [
                     "name": "Pluto",
                     "age": 888
-                ] as Document,
+                ] as TemplateContext,
                 [
                     "name": "Mercury",
                     "age": 9000
-                ] as Document
-            ] as Document
+                ] as TemplateContext
+            ] as TemplateContext
             ])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {

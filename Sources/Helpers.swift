@@ -12,6 +12,7 @@ public enum TemplateError: Error {
     case loopingOverNonArrayType
     case fileDoesNotExist(atPath: String)
     case unexpectedEndOfTemplate
+    case invalidString
     case expectedBoolean(found: ValueConvertible?)
 }
 

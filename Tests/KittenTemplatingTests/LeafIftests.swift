@@ -62,7 +62,7 @@ class IfTests: XCTestCase {
     
     func testNestedIfElse() throws {
         let template = try LeafSyntax.compile("nested-if-else.leaf", atPath: workDir + "Leaf/")
-        let expectations: [(input: Template.Context, expectation: String)] = [
+        let expectations: [(input: TemplateContext, expectation: String)] = [
             (input: ["a": true], expectation: "\n    Got a.\n\n"),
             (input: ["b": true], expectation: "\n    Got b.\n\n"),
             (input: ["c": true], expectation: "\n    Got c.\n\n"),

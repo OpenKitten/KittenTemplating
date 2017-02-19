@@ -1,5 +1,5 @@
+import KittenCore
 import Foundation
-import BSON
 
 public protocol TemplatingSyntax {
     static func compile(_ file: String, atPath path: String, inContext context: Any?) throws -> Template
@@ -16,112 +16,91 @@ extension TemplatingSyntax {
     }
 }
 
-public protocol ContextValueConvertible {
-    func makeContextValue() ->Template.Context.ContextValue
-}
+public protocol ContextValue {}
 
-public protocol DocumentRepresentable {
-    func makeDocument() -> Document
-}
-
-extension Document: DocumentRepresentable {
-    public func makeDocument() -> Document {
-        return self
+public struct TemplateContext : ContextValue, SerializableObject, ExpressibleByDictionaryLiteral, ExpressibleByArrayLiteral {
+    public typealias SupportedValue = ContextValue
+    var storage = [(String, SupportedValue)]()
+    
+    public init(dictionary: [String : SupportedValue]) {
+        for pair in dictionary {
+            storage.append(pair)
+        }
+    }
+    
+    public init(dictionaryLiteral elements: (String, SupportedValue)...) {
+        for (key, value) in elements {
+            storage.append((key, value))
+        }
+    }
+    
+    public init(arrayLiteral elements: SupportedValue...) {
+        for (key, value) in elements.enumerated() {
+            storage.append((key.description, value))
+        }
+    }
+    
+    public func getKeys() -> [String] {
+        return storage.map {
+            $0.0
+        }
+    }
+    
+    public func getValues() -> [ContextValue] {
+        return storage.map {
+            $0.1
+        }
+    }
+    
+    public func getKeyValuePairs() -> [String : ContextValue] {
+        var pairs = [String: ContextValue]()
+        
+        for (key, value) in storage {
+            pairs[key] = value
+        }
+        
+        return pairs
+    }
+    
+    public func getValue(forKey key: String) -> ContextValue? {
+        return storage.first {
+            $0.0 == key
+        }?.1
+    }
+    
+    public mutating func setValue(to newValue: ContextValue?, forKey key: String) {
+        let position = storage.index(where: {
+            $0.0 == key
+        })
+        
+        if let newValue = newValue {
+            if let position = position {
+                storage[position] = (key, newValue)
+            } else {
+                storage.append((key, newValue))
+            }
+        } else if let position = position {
+            storage.remove(at: position)
+        }
     }
 }
 
-extension Document: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
+extension String: ContextValue {}
+extension Int: ContextValue {}
+extension Bool: ContextValue {}
 
-extension String: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-extension Int: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-extension Int32: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-extension Int64: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-extension Bool: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-extension Date: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-extension ObjectId: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-extension RegularExpression: ContextValueConvertible {
-    public func makeContextValue() -> Template.Context.ContextValue {
-        return .value(self)
-    }
-}
-
-public final class Template : ValueConvertible {
+public final class Template {
     public let compiled: [UInt8]
     
     public init(compiled data: [UInt8]) {
         self.compiled = data
     }
     
-    public func makeBSONPrimitive() -> BSONPrimitive {
-        return Binary(data: self.compiled, withSubtype: .generic)
-    }
-    
     public init(raw template: String) throws {
         self.compiled = try Template.compile(template)
     }
     
-    public struct Context: ExpressibleByDictionaryLiteral {
-        public enum ContextValue: ContextValueConvertible {
-            //case cursor(Cursor<Document>)
-            case value(ValueConvertible)
-            
-            public func makeContextValue() -> ContextValue {
-                return self
-            }
-        }
-        
-        var context: [String: ContextValue]
-        
-        public init(dictionaryLiteral elements: (String, ContextValueConvertible)...) {
-            var context = [String: ContextValue]()
-            
-            for (key, value) in elements {
-                context[key] = value.makeContextValue()
-            }
-            
-            self.context = context
-        }
-    }
-    
-    public func run(inContext context: Context = [:]) throws -> [UInt8] {
+    public func run(inContext context: TemplateContext = [:]) throws -> [UInt8] {
         var position = 0
         var output = [UInt8]()
         
@@ -136,13 +115,13 @@ public final class Template : ValueConvertible {
             position += 1
             
             guard let string = String(bytes: stringData, encoding: String.Encoding.utf8) else {
-                throw DeserializationError.unableToInstantiateString(fromBytes: Array(stringData))
+                throw TemplateError.invalidString
             }
             
             return string
         }
         
-        func runExpression(inContext context: Context) throws -> Context.ContextValue? {
+        func runExpression(inContext context: TemplateContext) throws -> ContextValue? {
             switch compiled[position] {
             case Expression.variable:
                 position += 1
@@ -160,34 +139,33 @@ public final class Template : ValueConvertible {
                 
                 let firstPart = path.removeFirst()
                 
-                guard let contextValue = context.context[firstPart] else {
+                guard var value = context.getValue(forKey: firstPart) else {
                     return nil
                 }
                 
-                if case .value(let value) = contextValue {
-                    if path.count == 0 {
-                        return .value(value)
-                    }
-                    
-                    guard let doc = value as? Document, let value = doc[raw: path] else {
+                if path.count == 0 {
+                    return value
+                }
+                
+                for key in path {
+                    if let object = value as? TemplateContext {
+                        guard let newValue = object.getValue(forKey: key) else {
+                            return nil
+                        }
+                        
+                        value = newValue
+                    } else {
                         return nil
                     }
-                    
-                    return .value(value)
                 }
                 
-                guard path.count == 0 else {
-                    return nil
-                    // TODO: discuss: throw error?
-                }
-                
-                return contextValue
+                return value
             default:
                 throw TemplateError.invalidExpression(compiled[position])
             }
         }
         
-        func runStatements(inContext context: Context) throws {
+        func runStatements(inContext context: TemplateContext) throws {
             while position < compiled.count {
                 elementSwitch: switch compiled[position] {
                 case 0x00:
@@ -213,7 +191,7 @@ public final class Template : ValueConvertible {
                         
                         var expression = false
                         
-                        if let anyContextValue = try runExpression(inContext: context), case .value(let anyExpression) = anyContextValue, let booleanExpression = anyExpression as? Bool {
+                        if let anyContextValue = try runExpression(inContext: context), let booleanExpression = anyContextValue as? Bool {
                             expression = booleanExpression
                         }
                         
@@ -254,34 +232,25 @@ public final class Template : ValueConvertible {
                         let oldPosition = position
                         
                         if let contextValue = contextValue {
-                            switch contextValue {
-                            /*case .cursor(let cursor):
-                                for document in cursor {
+                            if let object = contextValue as? TemplateContext {
+                                for value in object.getValues() {
                                     defer {
                                         position = oldPosition
                                     }
-                                    newContext.context[variableName] = .value(document)
-                                    try runStatements(inContext: newContext)
-                                }*/
-                            case .value(let value):
-                                if let document = value as? Document, document.validatesAsArray() {
-                                    for (_, value) in document {
-                                        defer {
-                                            position = oldPosition
-                                        }
-                                        newContext.context[variableName] = .value(value)
-                                        try runStatements(inContext: newContext)
-                                    }
-                                } else {
-                                    defer {
-                                        position = oldPosition
-                                    }
-                                    newContext.context[variableName] = contextValue
+                                    
+                                    newContext.setValue(to: value, forKey: variableName)
                                     try runStatements(inContext: newContext)
                                 }
+                            } else {
+                                defer {
+                                    position = oldPosition
+                                }
+                                
+                                newContext.setValue(to: contextValue, forKey: variableName)
+                                try runStatements(inContext: newContext)
                             }
                         }
-                        
+                    
                         position += loopOffset
                         
                         guard compiled[position] == 0x00 else {
@@ -292,11 +261,11 @@ public final class Template : ValueConvertible {
                     case Statement.print:
                         position += 1
                         
-                        guard let contextValue = try runExpression(inContext: context), case .value(let value) = contextValue else {
+                        guard let contextValue = try runExpression(inContext: context) else {
                             break elementSwitch
                         }
                         
-                        output.append(contentsOf: value.makeTemplatingUTF8String())
+                        output.append(contentsOf: contextValue.makeTemplatingUTF8String())
                     default:
                         throw TemplateError.invalidStatement(compiled[position])
                     }
@@ -359,21 +328,15 @@ extension String {
     }
 }
 
-extension ValueConvertible {
+extension ContextValue {
     func makeTemplatingUTF8String() -> [UInt8] {
-        switch self.makeBSONPrimitive() {
-        case is String:
-            return [UInt8]((self as! String).utf8)
-        case is Int32:
-            return [UInt8]((self as! Int32).description.utf8)
-        case is Int64:
-            return [UInt8]((self as! Int64).description.utf8)
-        case is ObjectId:
-            return [UInt8]((self as! ObjectId).hexString.utf8)
-//        case is Int64:
-//            return [UInt8]((self as! Int64).description.utf8)
-//        case is Int64:
-//            return [UInt8]((self as! Int64).description.utf8)
+        switch self {
+        case let string as String:
+            return [UInt8](string.utf8)
+        case let int as Int:
+            return [UInt8](int.description.utf8)
+        case let bool as Bool:
+            return bool ? "true".makeTemplatingUTF8String() : "false".makeTemplatingUTF8String()
         default:
             return []
         }

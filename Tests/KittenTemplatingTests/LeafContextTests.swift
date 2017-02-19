@@ -29,7 +29,7 @@ class ContextTests: XCTestCase {
     
     func testNested() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("#(best-friend) { Hello, #(self.name)! }".utf8), atPath: workDir + "Leaf/")
-        let renderedBytes = try template.run(inContext: ["best-friend": ["name": "World"] as Document])
+        let renderedBytes = try template.run(inContext: ["best-friend": ["name": "World"] as TemplateContext])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
             XCTFail()
@@ -41,7 +41,7 @@ class ContextTests: XCTestCase {
     
     func testLoop() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("#loop(friends, \"friend\") { Hello, #(friend)! }".utf8), atPath: workDir + "Leaf/")
-        let renderedBytes = try template.run(inContext: ["friends": ["a", "b", "c", "#loop"] as Document])
+        let renderedBytes = try template.run(inContext: ["friends": ["a", "b", "c", "#loop"] as TemplateContext])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
             XCTFail()
@@ -65,7 +65,7 @@ class ContextTests: XCTestCase {
     
     func testDualContext() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("Let's render #(friend) { #(name) is friends with #(friend.name) } ".utf8), atPath: workDir + "Leaf/")
-        let renderedBytes = try template.run(inContext: ["name": "Foo", "friend": ["name": "Bar"] as Document])
+        let renderedBytes = try template.run(inContext: ["name": "Foo", "friend": ["name": "Bar"] as TemplateContext])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
             XCTFail()
@@ -77,7 +77,7 @@ class ContextTests: XCTestCase {
     
     func testMultiContext() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("#(a) { #(self.b) { #(self.c) { #(self.path.1) } } }".utf8), atPath: workDir + "Leaf/")
-        let renderedBytes = try template.run(inContext: ["a": ["b": ["c": ["path": ["array-variant", "HEllo"] as Document] as Document] as Document] as Document])
+        let renderedBytes = try template.run(inContext: ["a": ["b": ["c": ["path": ["array-variant", "HEllo"] as TemplateContext] as TemplateContext] as TemplateContext] as TemplateContext])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
             XCTFail()
@@ -118,10 +118,10 @@ class ContextTests: XCTestCase {
             "path": [
                 "to": [
                     "person": [
-                        ["name": "World"] as Document
-                    ] as Document
-                ] as Document
-            ] as Document
+                        ["name": "World"] as TemplateContext
+                    ] as TemplateContext
+                ] as TemplateContext
+            ] as TemplateContext
             ])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
