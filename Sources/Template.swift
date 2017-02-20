@@ -16,25 +16,44 @@ extension TemplatingSyntax {
     }
 }
 
-public protocol ContextValue {}
+public protocol ContextValue : Convertible {}
+public protocol SimpleContextValue : ContextValue, SimpleConvertible {}
+
+public struct TemplateSequence : InitializableSequence {
+    public typealias SupportedValue = ContextValue
+    
+    var storage = [SupportedValue]()
+    
+    public init<S>(sequence: S) where S : Sequence, S.Iterator.Element == SupportedValue {
+        storage = Array(sequence)
+    }
+
+    public func makeIterator() -> IndexingIterator<[ContextValue]> {
+        return storage.makeIterator()
+    }
+}
 
 public struct TemplateContext : ContextValue, SerializableObject, ExpressibleByDictionaryLiteral, ExpressibleByArrayLiteral {
-    public typealias SupportedValue = ContextValue
-    var storage = [(String, SupportedValue)]()
+    public static func convert(_ value: Any) -> ContextValue? {
+        return nil
+    }
     
-    public init(dictionary: [String : SupportedValue]) {
+    public typealias SequenceType = TemplateSequence
+    var storage = [(String, ContextValue)]()
+    
+    public init(dictionary: [String : ContextValue]) {
         for pair in dictionary {
             storage.append(pair)
         }
     }
     
-    public init(dictionaryLiteral elements: (String, SupportedValue)...) {
+    public init(dictionaryLiteral elements: (String, ContextValue)...) {
         for (key, value) in elements {
             storage.append((key, value))
         }
     }
     
-    public init(arrayLiteral elements: SupportedValue...) {
+    public init(arrayLiteral elements: ContextValue...) {
         for (key, value) in elements.enumerated() {
             storage.append((key.description, value))
         }
@@ -98,6 +117,10 @@ public final class Template {
     
     public init(raw template: String) throws {
         self.compiled = try Template.compile(template)
+    }
+    
+    public func run<S: SerializableObject>(inContext context: S) throws -> [UInt8] {
+        return try self.run(inContext: context.convert(to: TemplateContext.self).converted)
     }
     
     public func run(inContext context: TemplateContext = [:]) throws -> [UInt8] {
