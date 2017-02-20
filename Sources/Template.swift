@@ -120,7 +120,7 @@ public final class Template {
     }
     
     public func run<S: SerializableObject>(inContext context: S) throws -> [UInt8] {
-        return try self.run(inContext: context.convert(to: TemplateContext.self).converted)
+        return try self.run(inContext: context.convert(toObject: TemplateContext.self).converted)
     }
     
     public func run(inContext context: TemplateContext = [:]) throws -> [UInt8] {
