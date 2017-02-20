@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-import BSON
 @testable import KittenTemplating
 
 class ContextTests: XCTestCase {

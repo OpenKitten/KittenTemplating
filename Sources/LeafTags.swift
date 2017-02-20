@@ -1,5 +1,3 @@
-import BSON
-
 /// Simple typealias for simplicity
 public typealias LeafCompileContext = LeafSyntax.CompileContext
 

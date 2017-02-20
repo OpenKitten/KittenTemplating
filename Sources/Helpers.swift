@@ -1,5 +1,3 @@
-import BSON
-
 public enum TemplateError: Error {
     case invalidElement(UInt8)
     case invalidStatement(UInt8)
@@ -13,7 +11,7 @@ public enum TemplateError: Error {
     case fileDoesNotExist(atPath: String)
     case unexpectedEndOfTemplate
     case invalidString
-    case expectedBoolean(found: ValueConvertible?)
+    case expectedBoolean(found: ContextValue?)
 }
 
 internal struct Element {

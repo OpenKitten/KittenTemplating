@@ -1,7 +1,6 @@
 import Foundation
 import XCTest
 @testable import KittenTemplating
-import BSON
 
 #if Xcode
     internal var workDir: String {
