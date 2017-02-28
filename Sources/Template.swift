@@ -1,6 +1,12 @@
 import KittenCore
 import Foundation
 
+public enum TemplateData : DataType {
+    public typealias Object = TemplateContext
+    public typealias Sequence = TemplateSequence
+    public typealias SupportedValue = ContextValue
+}
+
 public protocol TemplatingSyntax {
     static func compile(_ file: String, atPath path: String, inContext context: Any?) throws -> Template
     static func compile(fromData data: [UInt8], atPath path: String, inContext context: Any?) throws -> Template
@@ -19,75 +25,55 @@ extension TemplatingSyntax {
 public protocol ContextValue : Convertible {}
 public protocol SimpleContextValue : ContextValue, SimpleConvertible {}
 
-public struct TemplateSequence : InitializableSequence {
+public struct TemplateSequence : InitializableSequence, ContextValue, ExpressibleByArrayLiteral {
     public typealias SupportedValue = ContextValue
+    
+    public init(arrayLiteral elements: ContextValue...) {
+        storage = elements
+    }
     
     var storage = [SupportedValue]()
     
     public init<S>(sequence: S) where S : Sequence, S.Iterator.Element == SupportedValue {
         storage = Array(sequence)
     }
-
+    
     public func makeIterator() -> IndexingIterator<[ContextValue]> {
         return storage.makeIterator()
     }
 }
 
-public struct TemplateContext : ContextValue, SerializableObject, ExpressibleByDictionaryLiteral, ExpressibleByArrayLiteral {
-    public static func convert(_ value: Any) -> ContextValue? {
-        return nil
+public struct TemplateContext : ContextValue, InitializableObject, ExpressibleByDictionaryLiteral {
+    public /// Creates an instance initialized with the given key-value pairs.
+    init(dictionaryLiteral elements: (String, ContextValue)...) {
+        self.storage = elements
     }
     
-    public typealias SequenceType = TemplateSequence
+    public init<S>(sequence: S) where S : Sequence, S.Iterator.Element == SupportedValue {
+        self.storage = Array(sequence)
+    }
+    
+    public typealias ObjectKey = String
+    public typealias ObjectValue = ContextValue
+    public typealias SupportedValue = (String, ContextValue)
+    
     var storage = [(String, ContextValue)]()
     
-    public init(dictionary: [String : ContextValue]) {
-        for pair in dictionary {
-            storage.append(pair)
-        }
-    }
-    
-    public init(dictionaryLiteral elements: (String, ContextValue)...) {
-        for (key, value) in elements {
-            storage.append((key, value))
-        }
-    }
-    
-    public init(arrayLiteral elements: ContextValue...) {
-        for (key, value) in elements.enumerated() {
-            storage.append((key.description, value))
-        }
-    }
-    
-    public func getKeys() -> [String] {
-        return storage.map {
-            $0.0
-        }
-    }
-    
-    public func getValues() -> [ContextValue] {
-        return storage.map {
-            $0.1
-        }
-    }
-    
-    public func getKeyValuePairs() -> [String : ContextValue] {
-        var pairs = [String: ContextValue]()
+    public var dictionaryRepresentation: [String: ContextValue] {
+        var dict = [String: ContextValue]()
         
         for (key, value) in storage {
-            pairs[key] = value
+            dict[key] = value
         }
         
-        return pairs
+        return dict
     }
     
-    public func getValue(forKey key: String) -> ContextValue? {
-        return storage.first {
-            $0.0 == key
-        }?.1
+    func getValue(forKey key: String) -> ContextValue? {
+        return self.storage.first(where: { $0.0 == key })?.1
     }
     
-    public mutating func setValue(to newValue: ContextValue?, forKey key: String) {
+    mutating func setValue(to newValue: ContextValue?, forKey key: String) {
         let position = storage.index(where: {
             $0.0 == key
         })
@@ -102,9 +88,18 @@ public struct TemplateContext : ContextValue, SerializableObject, ExpressibleByD
             storage.remove(at: position)
         }
     }
+    
+    public func makeIterator() -> AnyIterator<(String, ContextValue)> {
+        var storageIterator = storage.makeIterator()
+        
+        return AnyIterator {
+            return storageIterator.next()
+        }
+    }
 }
 
 extension String: ContextValue {}
+extension Double: ContextValue {}
 extension Int: ContextValue {}
 extension Bool: ContextValue {}
 
@@ -119,8 +114,9 @@ public final class Template {
         self.compiled = try Template.compile(template)
     }
     
-    public func run<S: SerializableObject>(inContext context: S) throws -> [UInt8] {
-        return try self.run(inContext: context.convert(toObject: TemplateContext.self).converted)
+    public func run<S: InitializableObject>(inContext context: S) throws -> [UInt8] {
+        
+        return try self.run(inContext: context.convert(to: TemplateData.self) as? TemplateContext ?? [:])
     }
     
     public func run(inContext context: TemplateContext = [:]) throws -> [UInt8] {
@@ -160,9 +156,7 @@ public final class Template {
                     throw TemplateError.emptyVariablePath
                 }
                 
-                let firstPart = path.removeFirst()
-                
-                guard var value = context.getValue(forKey: firstPart) else {
+                guard var value = context.getValue(forKey: path.removeFirst()) else {
                     return nil
                 }
                 
@@ -177,6 +171,8 @@ public final class Template {
                         }
                         
                         value = newValue
+                    } else if let sequence = value as? TemplateSequence, let position = Int(key), position < sequence.storage.count {
+                        value = sequence.storage[position]
                     } else {
                         return nil
                     }
@@ -255,8 +251,17 @@ public final class Template {
                         let oldPosition = position
                         
                         if let contextValue = contextValue {
-                            if let object = contextValue as? TemplateContext {
-                                for value in object.getValues() {
+                            if let sequence = contextValue as? TemplateSequence {
+                                for value in sequence {
+                                    defer {
+                                        position = oldPosition
+                                    }
+                                    
+                                    newContext.setValue(to: value, forKey: variableName)
+                                    try runStatements(inContext: newContext)
+                                }
+                            } else if let object = contextValue as? TemplateContext {
+                                for (_, value) in object {
                                     defer {
                                         position = oldPosition
                                     }

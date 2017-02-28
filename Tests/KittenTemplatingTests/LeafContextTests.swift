@@ -40,7 +40,7 @@ class ContextTests: XCTestCase {
     
     func testLoop() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("#loop(friends, \"friend\") { Hello, #(friend)! }".utf8), atPath: workDir + "Leaf/")
-        let renderedBytes = try template.run(inContext: ["friends": ["a", "b", "c", "#loop"] as TemplateContext])
+        let renderedBytes = try template.run(inContext: ["friends": ["a", "b", "c", "#loop"] as TemplateSequence])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
             XCTFail()
@@ -76,7 +76,7 @@ class ContextTests: XCTestCase {
     
     func testMultiContext() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("#(a) { #(self.b) { #(self.c) { #(self.path.1) } } }".utf8), atPath: workDir + "Leaf/")
-        let renderedBytes = try template.run(inContext: ["a": ["b": ["c": ["path": ["array-variant", "HEllo"] as TemplateContext] as TemplateContext] as TemplateContext] as TemplateContext])
+        let renderedBytes = try template.run(inContext: ["a": ["b": ["c": ["path": ["array-variant", "HEllo"] as TemplateSequence] as TemplateContext] as TemplateContext] as TemplateContext])
         
         guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
             XCTFail()
@@ -118,7 +118,7 @@ class ContextTests: XCTestCase {
                 "to": [
                     "person": [
                         ["name": "World"] as TemplateContext
-                    ] as TemplateContext
+                    ] as TemplateSequence
                 ] as TemplateContext
             ] as TemplateContext
             ])
