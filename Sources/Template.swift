@@ -25,12 +25,8 @@ extension TemplatingSyntax {
 public protocol ContextValue : Convertible {}
 public protocol SimpleContextValue : ContextValue, SimpleConvertible {}
 
-public struct TemplateSequence : InitializableSequence, ContextValue, ExpressibleByArrayLiteral {
+public struct TemplateSequence : InitializableSequence, ContextValue {
     public typealias SupportedValue = ContextValue
-    
-    public init(arrayLiteral elements: ContextValue...) {
-        storage = elements
-    }
     
     var storage = [SupportedValue]()
     
@@ -44,23 +40,22 @@ public struct TemplateSequence : InitializableSequence, ContextValue, Expressibl
 }
 
 public struct TemplateContext : ContextValue, InitializableObject, ExpressibleByDictionaryLiteral {
-    public /// Creates an instance initialized with the given key-value pairs.
-    init(dictionaryLiteral elements: (String, ContextValue)...) {
-        self.storage = elements
+    public init(dictionaryLiteral elements: (KittenBytes, ContextValue)...) {
+        self.storage = elements.map { ($0.0.kittenBytes, $0.1) }
     }
     
     public init<S>(sequence: S) where S : Sequence, S.Iterator.Element == SupportedValue {
-        self.storage = Array(sequence)
+        self.storage = sequence.map { ($0.0, $0.1) }
     }
     
-    public typealias ObjectKey = String
+    public typealias ObjectKey = KittenBytes
     public typealias ObjectValue = ContextValue
-    public typealias SupportedValue = (String, ContextValue)
+    public typealias SupportedValue = (KittenBytes, ContextValue)
     
-    var storage = [(String, ContextValue)]()
+    var storage = [(KittenBytes, ContextValue)]()
     
-    public var dictionaryRepresentation: [String: ContextValue] {
-        var dict = [String: ContextValue]()
+    public var dictionaryRepresentation: [KittenBytes: ContextValue] {
+        var dict = [KittenBytes: ContextValue]()
         
         for (key, value) in storage {
             dict[key] = value
@@ -69,11 +64,15 @@ public struct TemplateContext : ContextValue, InitializableObject, ExpressibleBy
         return dict
     }
     
-    func getValue(forKey key: String) -> ContextValue? {
-        return self.storage.first(where: { $0.0 == key })?.1
+    func getValue(forKey key: KittenBytes) -> ContextValue? {
+        return self.storage.first(where: { $0.0.bytes == key.bytes })?.1
     }
     
-    mutating func setValue(to newValue: ContextValue?, forKey key: String) {
+    func getValue(forKey key: String) -> ContextValue? {
+        return self.storage.first(where: { $0.0 == key.kittenBytes })?.1
+    }
+    
+    mutating func setValue(to newValue: ContextValue?, forKey key: KittenBytes) {
         let position = storage.index(where: {
             $0.0 == key
         })
@@ -89,7 +88,23 @@ public struct TemplateContext : ContextValue, InitializableObject, ExpressibleBy
         }
     }
     
-    public func makeIterator() -> AnyIterator<(String, ContextValue)> {
+    mutating func setValue(to newValue: ContextValue?, forKey key: String) {
+        let position = storage.index(where: {
+            $0.0 == key.kittenBytes
+        })
+        
+        if let newValue = newValue {
+            if let position = position {
+                storage[position] = (key.kittenBytes, newValue)
+            } else {
+                storage.append((key.kittenBytes, newValue))
+            }
+        } else if let position = position {
+            storage.remove(at: position)
+        }
+    }
+    
+    public func makeIterator() -> AnyIterator<(KittenBytes, ContextValue)> {
         var storageIterator = storage.makeIterator()
         
         return AnyIterator {
@@ -100,6 +115,8 @@ public struct TemplateContext : ContextValue, InitializableObject, ExpressibleBy
 
 extension String: ContextValue {}
 extension Double: ContextValue {}
+extension StaticString: ContextValue {}
+extension KittenBytes: ContextValue {}
 extension Int: ContextValue {}
 extension Bool: ContextValue {}
 
@@ -123,7 +140,7 @@ public final class Template {
         var position = 0
         var output = [UInt8]()
         
-        func parseCString() throws -> String {
+        func parseCString() throws -> KittenBytes {
             var stringData = [UInt8]()
             
             while position < compiled.count, compiled[position] != 0x00 {
@@ -133,18 +150,14 @@ public final class Template {
             
             position += 1
             
-            guard let string = String(bytes: stringData, encoding: String.Encoding.utf8) else {
-                throw TemplateError.invalidString
-            }
-            
-            return string
+            return KittenBytes(stringData)
         }
         
         func runExpression(inContext context: TemplateContext) throws -> ContextValue? {
             switch compiled[position] {
             case Expression.variable:
                 position += 1
-                var path = [String]()
+                var path = [KittenBytes]()
                 
                 while compiled[position] != 0x00 {
                     path.append(try parseCString())
@@ -171,8 +184,6 @@ public final class Template {
                         }
                         
                         value = newValue
-                    } else if let sequence = value as? TemplateSequence, let position = Int(key), position < sequence.storage.count {
-                        value = sequence.storage[position]
                     } else {
                         return nil
                     }
@@ -278,7 +289,7 @@ public final class Template {
                                 try runStatements(inContext: newContext)
                             }
                         }
-                    
+                        
                         position += loopOffset
                         
                         guard compiled[position] == 0x00 else {
@@ -363,6 +374,14 @@ extension ContextValue {
             return [UInt8](string.utf8)
         case let int as Int:
             return [UInt8](int.description.utf8)
+        case let double as Double:
+            return [UInt8](double.description.utf8)
+        case let string as StaticString:
+            var data = [UInt8](repeating: 0, count: string.utf8CodeUnitCount)
+            memcpy(&data, string.utf8Start, string.utf8CodeUnitCount)
+            return data
+        case let string as KittenBytes:
+            return string.bytes
         case let bool as Bool:
             return bool ? "true".makeTemplatingUTF8String() : "false".makeTemplatingUTF8String()
         default:
