@@ -70,6 +70,11 @@ public struct LeafPrint : BasicLeafTag {
     /// Compiles this tag to a print statement to print the variable as a string
     public static func compile(atPosition position: inout Int, inCode input: [UInt8], byTemplatingLanguage language: TemplatingSyntax.Type, atPath path: String, inContext context: LeafCompileContext) throws -> [UInt8] {
         let variableBytes = try input.scanUntil(SpecialCharacters.argumentsClose, fromPosition: &position)
+        
+        if variableBytes.count == 0 {
+            return [Element.rawData, 1, 0, 0, 0, SpecialCharacters.pound]
+        }
+        
         var variablePath = variableBytes.makeVariablePath(inContext: context)
         let oldPosition = position
         

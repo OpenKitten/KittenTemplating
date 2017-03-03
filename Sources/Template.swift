@@ -25,13 +25,17 @@ extension TemplatingSyntax {
 public protocol ContextValue : Convertible {}
 public protocol SimpleContextValue : ContextValue, SimpleConvertible {}
 
-public struct TemplateSequence : InitializableSequence, ContextValue {
+public struct TemplateSequence : InitializableSequence, ContextValue, ExpressibleByArrayLiteral {
     public typealias SupportedValue = ContextValue
     
     var storage = [SupportedValue]()
     
     public init<S>(sequence: S) where S : Sequence, S.Iterator.Element == SupportedValue {
         storage = Array(sequence)
+    }
+    
+    public init(arrayLiteral elements: ContextValue...) {
+        storage = elements
     }
     
     public func makeIterator() -> IndexingIterator<[ContextValue]> {
@@ -179,11 +183,18 @@ public final class Template {
                 
                 for key in path {
                     if let object = value as? TemplateContext {
-                        guard let newValue = object.getValue(forKey: key) else {
+                        if let newValue = object.getValue(forKey: key) {
+                            value = newValue
+                        } else {
                             return nil
                         }
-                        
-                        value = newValue
+                    } else if let sequence = value as? TemplateSequence {
+                        if let key = Int(byteString: key.bytes), key < sequence.storage.count {
+                            print(key)
+                            value = sequence.storage[key]
+                        } else {
+                            return nil
+                        }
                     } else {
                         return nil
                     }
@@ -364,6 +375,27 @@ extension String {
         }
         
         return String(bytes: buffer, encoding: .utf8) ?? ""
+    }
+}
+
+extension Int {
+    init?(byteString: [UInt8]) {
+        var me = 0
+        var power = 1
+        
+        for byte in byteString.reversed() {
+            defer { power = power * 10 }
+            
+            guard byte >= 0x30 && byte <= 0x39 else {
+                return nil
+            }
+            
+            let byte = byte - 0x30
+            
+            me += Int(byte) * power
+        }
+        
+        self = me
     }
 }
 

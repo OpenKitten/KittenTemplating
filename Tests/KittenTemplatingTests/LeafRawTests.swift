@@ -20,6 +20,18 @@ class RawTests: XCTestCase {
         XCTAssertEqual(rendered, expectation)
     }
     
+    func testPound() throws {
+        let template = try LeafSyntax.compile(fromData: [UInt8]("Pounds are Aws#()me".utf8), atPath: workDir + "Leaf/")
+        let renderedBytes = try template.run(inContext: [:])
+        
+        guard let rendered = String(bytes: renderedBytes, encoding: .utf8) else {
+            XCTFail()
+            return
+        }
+        
+        XCTAssertEqual(rendered, "Pounds are Aws#me")
+    }
+    
     func testRawVariable() throws {
         let template = try LeafSyntax.compile(fromData: [UInt8]("Hello, #raw(unescaped)!".utf8), atPath: workDir + "Leaf/")
         let renderedBytes = try template.run(inContext: ["unescaped": "<b>World</b>"])
