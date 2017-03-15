@@ -14,6 +14,12 @@ public protocol TemplatingSyntax {
 
 extension TemplatingSyntax {
     public static func compile(_ file: String, atPath path: String, inContext context: Any? = nil) throws -> Template {
+        var path = path
+        
+        if path.characters.last != "/" {
+            path += "/"
+        }
+        
         guard let data = FileManager.default.contents(atPath: path + file) else {
             throw TemplateError.fileDoesNotExist(atPath: path + file)
         }
